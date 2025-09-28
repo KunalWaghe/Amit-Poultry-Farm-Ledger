@@ -40,8 +40,8 @@
                     {% for trader in traders_in_line %}
                     <tr class="border-b hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-lg font-medium text-gray-900">
-                            <!-- This link will eventually go to the trader's ledger -->
-                            <a href="#" class="text-blue-700 hover:text-blue-900">{{ trader.name }}</a>
+                            <!-- This link now correctly points to the specific trader's ledger page -->
+                            <a href="/trader/{{ trader.id }}" class="text-blue-700 hover:text-blue-900">{{ trader.name }}</a>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-lg font-medium text-gray-900">
                             <!-- We format the debt to two decimal places -->
@@ -57,3 +57,4 @@
 
 </body>
 </html>
+

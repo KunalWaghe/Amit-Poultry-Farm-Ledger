@@ -4,8 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Select a Line - Poultry Farm Manager</title>
-    <!-- We'll use Tailwind CSS to make it look nice without much effort -->
+    <title>Poultry Farm Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,30 +16,35 @@
     </style>
 </head>
 
-<body class="bg-gray-100">
-    <div class="container mx-auto px-4 py-8">
-        <header class="text-center mb-10">
-            <h1 class="text-4xl font-bold text-gray-800">Poultry Farm Manager</h1>
-            <p class="text-lg text-gray-600 mt-2">Please select a delivery line to manage traders.</p>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Poultry Business Manager</h1>
+            <p class="text-gray-600 mt-2">Select a delivery line to view traders and manage ledgers.</p>
+             <!-- NEW LINK TO MANAGEMENT PAGE -->
+            <div class="mt-4">
+                <a href="{{ url_for('manage_traders') }}" 
+                   class="inline-block bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-700 transition-colors">
+                    Manage Traders
+                </a>
+            </div>
         </header>
 
         <main>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <!-- 
-                    This is a Jinja2 for-loop.
-                    Flask will pass the 'lines' list from our Python file here.
-                    The code will loop through each 'line' in the list and create a card for it.
-                -->
                 {% for line in lines %}
-                <a href="/line/{{ line }}"
-                    class="block p-6 bg-white rounded-xl shadow-md hover:shadow-lg hover:scale-105 transition-transform duration-200 ease-in-out">
-                    <h2 class="text-2xl font-semibold text-center text-gray-700">{{ line }}</h2>
+                <a href="/line/{{ line }}" class="block p-6 bg-white rounded-xl shadow-md hover:shadow-lg hover:scale-105 transition-transform duration-200">
+                    <h2 class="text-2xl font-semibold text-gray-800">{{ line }}</h2>
+                    <p class="text-gray-500 mt-2">View traders in this line</p>
                 </a>
                 {% endfor %}
             </div>
         </main>
 
+        <footer class="text-center mt-12 text-sm text-gray-500">
+            <p>&copy; 2025 Made By Kunal Waghe (knlwaghe@gmail.com) </p>
+        </footer>
     </div>
 </body>
-
 </html>

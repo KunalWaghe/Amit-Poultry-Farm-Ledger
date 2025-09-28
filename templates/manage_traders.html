@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Traders - Poultry Farm Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-800">Manage Traders</h1>
+                <p class="text-gray-600">Add, view, or remove traders from your records.</p>
+            </div>
+            <a href="/" class="text-blue-600 hover:underline">&larr; Back to Home</a>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Add New Trader Form -->
+            <div class="md:col-span-1">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-700">Add New Trader</h2>
+                    <form action="/add_trader" method="POST" class="space-y-4">
+                        <div>
+                            <label for="name" class="block text-sm font-medium text-gray-700">Trader Name</label>
+                            <input type="text" id="name" name="name" required class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        </div>
+                        <div>
+                            <label for="line" class="block text-sm font-medium text-gray-700">Line</label>
+                            <select id="line" name="line" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                                {% for line in lines %}
+                                <option value="{{ line }}">{{ line }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                            Add Trader
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- List of Existing Traders -->
+            <div class="md:col-span-2">
+                <div class="bg-white rounded-xl shadow-md overflow-hidden">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="border-b bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 font-medium">Name</th>
+                                <th class="px-6 py-3 font-medium">Line</th>
+                                <th class="px-6 py-3 font-medium text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for trader in traders %}
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="px-6 py-4 font-semibold text-gray-800">{{ trader.name }}</td>
+                                <td class="px-6 py-4">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        {{ trader.line }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <form action="/delete_trader/{{ trader.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete {{ trader.name }}? This cannot be undone.');">
+                                        <button type="submit" class="text-red-600 hover:text-red-900 font-medium">Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center py-8 text-gray-500">No traders found. Add one to get started.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
