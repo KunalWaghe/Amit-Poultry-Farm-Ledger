@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block title %}Edit {{ trader.name }}{% endblock %}
+
+{% block content %}
+<header class="mb-8 flex justify-between items-center">
+    <div>
+        <h1 class="text-4xl font-bold text-gray-800">Edit Trader</h1>
+        <p class="text-gray-600">Update the details for <span class="font-semibold text-blue-600">{{ trader.name }}</span>.</p>
+    </div>
+    <a href="{{ url_for('manage_traders') }}" class="text-blue-600 hover:underline">&larr; Back to Manage Traders</a>
+</header>
+
+<div class="bg-white p-6 rounded-xl shadow-md max-w-lg mx-auto">
+    <form action="{{ url_for('edit_trader', trader_id=trader.id) }}" method="POST" class="space-y-4">
+        <div>
+            <label for="name" class="block text-sm font-medium text-gray-700">Trader Name</label>
+            <input type="text" id="name" name="name" value="{{ trader.name }}" required class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+        </div>
+        <div>
+            <label for="line" class="block text-sm font-medium text-gray-700">Line</label>
+            <select id="line" name="line" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                {% for line_option in lines %}
+                <option value="{{ line_option }}" {% if line_option == trader.line %}selected{% endif %}>{{ line_option }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+            Save Changes
+        </button>
+    </form>
+</div>
+{% endblock %}

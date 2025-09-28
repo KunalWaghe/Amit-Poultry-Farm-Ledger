@@ -1,9 +1,11 @@
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, g
-from datetime import date
+from flask import Flask, render_template, request, redirect, url_for, g, flash
+from datetime import date, timedelta
 
 # Initialize our Flask application.
 app = Flask(__name__)
+# A secret key is required to use flash messages.
+app.secret_key = 'your_super_secret_key_change_this_later'
 
 # --- DATABASE CONFIGURATION ---
 DATABASE = 'poultry.db'
@@ -22,103 +24,92 @@ def close_db(error):
     if hasattr(g, 'db'):
         g.db.close()
 
-# --- STATIC DATA (Can still be hardcoded) ---
+# --- STATIC DATA ---
 lines = ["Pati", "Amjhera+Gandhwani", "Anjad", "Dahi", "Local"]
+bird_types = ["Minar", "Broiler", "Parent"]
 
-# --- WEB PAGES (Routes) ---
+# --- CORE ROUTES ---
 
 @app.route('/')
 def home():
-    """ Renders the homepage to select a line. """
+    """Renders the homepage."""
     return render_template('home.html', lines=lines)
-    
+
 @app.route('/line/<line_name>')
 def view_line(line_name):
-    """ Renders the page showing all traders for a specific line from the database. """
+    """Displays all traders for a specific line."""
     db = get_db()
-    traders_in_line = db.execute(
-        'SELECT * FROM traders WHERE line = ? ORDER BY name', (line_name,)
-    ).fetchall()
+    traders_in_line = db.execute('SELECT * FROM traders WHERE line = ? ORDER BY name', (line_name,)).fetchall()
     return render_template('line_traders.html', line_name=line_name, traders_in_line=traders_in_line)
 
 @app.route('/trader/<int:trader_id>')
 def view_trader(trader_id):
-    """ Renders the ledger for a single trader by querying the database. """
+    """Displays the ledger for an individual trader."""
     db = get_db()
-    
-    selected_trader = db.execute(
-        'SELECT * FROM traders WHERE id = ?', (trader_id,)
-    ).fetchone()
-    
+    selected_trader = db.execute('SELECT * FROM traders WHERE id = ?', (trader_id,)).fetchone()
     if not selected_trader:
-        return "Trader not found!", 404
-
+        flash(f"Trader with ID {trader_id} not found.", 'error')
+        return redirect(url_for('home'))
+    
     today_str = date.today().isoformat()
-    
-    rates_from_db = db.execute(
-        'SELECT bird_type, rate FROM daily_rates WHERE date = ? AND line = ?',
-        (today_str, selected_trader['line'])
-    ).fetchall()
+    rates_from_db = db.execute('SELECT bird_type, rate FROM daily_rates WHERE date = ? AND line = ?', (today_str, selected_trader['line'])).fetchall()
     current_rates = {r['bird_type']: r['rate'] for r in rates_from_db}
-
-    trader_transactions = db.execute(
-        'SELECT * FROM transactions WHERE trader_id = ? ORDER BY date DESC, id DESC', (trader_id,)
-    ).fetchall()
     
+    trader_transactions = db.execute('SELECT * FROM transactions WHERE trader_id = ? ORDER BY date DESC, id DESC', (trader_id,)).fetchall()
     return render_template('trader_ledger.html', trader=selected_trader, transactions=trader_transactions, rates=current_rates)
+
+# --- TRANSACTION ROUTES ---
 
 @app.route('/trader/<int:trader_id>/add_bill', methods=['POST'])
 def add_bill(trader_id):
-    """ Processes the new bill and saves it to the database. """
+    """Processes and saves a new bill for a trader."""
     db = get_db()
-    # Ensure the trader exists
-    trader = db.execute('SELECT id FROM traders WHERE id = ?', (trader_id,)).fetchone()
-    if not trader:
-        return "Trader not found!", 404
-
     today_str = date.today().isoformat()
-    # ... (Calculation logic is the same as before) ...
+    
     quantities = {'Minar': float(request.form.get('minar_qty') or 0), 'Broiler': float(request.form.get('broiler_qty') or 0), 'Parent': float(request.form.get('parent_qty') or 0)}
     rates_from_form = {'Minar': float(request.form.get('minar_rate') or 0), 'Broiler': float(request.form.get('broiler_rate') or 0), 'Parent': float(request.form.get('parent_rate') or 0)}
+    
     total_bill, bill_details = 0, []
     for bird, qty in quantities.items():
         if qty > 0:
             rate = rates_from_form.get(bird)
-            if rate is None or rate == 0: return f"Error: Rate for {bird} was not provided or was zero.", 400
+            if not rate:
+                flash(f"Error: Rate for {bird} was not provided.", 'error')
+                return redirect(url_for('view_trader', trader_id=trader_id))
             total_bill += qty * rate
             bill_details.append(f"{bird}: {qty} {'units' if bird == 'Minar' else 'kg'} @ {'%.2f' % rate}")
-    if total_bill == 0: return redirect(url_for('view_trader', trader_id=trader_id))
+            
+    if total_bill == 0:
+        flash("No quantities entered, bill not created.", 'info')
+        return redirect(url_for('view_trader', trader_id=trader_id))
+        
     amount_paid = float(request.form.get('amount_paid') or 0)
     remaining_due = total_bill - amount_paid
-
-    # --- Database Operations ---
-    db.execute('UPDATE traders SET total_debt = total_debt + ? WHERE id = ?', (remaining_due, trader_id))
-    db.execute(
-        'INSERT INTO transactions (trader_id, type, date, details, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?)',
-        (trader_id, 'Purchase', today_str, "\n".join(bill_details), total_bill, amount_paid)
-    )
-    db.commit() # Commit the changes to the database
     
+    db.execute('UPDATE traders SET total_debt = total_debt + ? WHERE id = ?', (remaining_due, trader_id))
+    db.execute('INSERT INTO transactions (trader_id, type, date, details, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?)',(trader_id, 'Purchase', today_str, "\n".join(bill_details), total_bill, amount_paid))
+    db.commit()
+    
+    flash(f"New bill totaling ₹{total_bill:.2f} added successfully!", 'success')
     return redirect(url_for('view_trader', trader_id=trader_id))
 
 @app.route('/trader/<int:trader_id>/add_payment', methods=['POST'])
 def add_payment(trader_id):
-    """ Processes a simple payment and saves it to the database. """
+    """Processes and saves a standalone payment."""
     db = get_db()
     amount_paid = float(request.form.get('amount_paid') or 0)
     
     if amount_paid > 0:
-        today_str = date.today().isoformat()
         db.execute('UPDATE traders SET total_debt = total_debt - ? WHERE id = ?', (amount_paid, trader_id))
-        db.execute(
-            'INSERT INTO transactions (trader_id, type, date, details, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?)',
-            (trader_id, 'Payment', today_str, 'Standalone Payment', 0, amount_paid)
-        )
+        db.execute('INSERT INTO transactions (trader_id, type, date, details, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?)',(trader_id, 'Payment', date.today().isoformat(), 'Standalone Payment', 0, amount_paid))
         db.commit()
-    
+        flash(f"Payment of ₹{amount_paid:.2f} recorded successfully!", 'success')
+    else:
+        flash("Payment amount must be greater than zero.", 'error')
+        
     return redirect(url_for('view_trader', trader_id=trader_id))
 
-# --- NEW ROUTES FOR TRADER MANAGEMENT ---
+# --- MANAGEMENT ROUTES ---
 
 @app.route('/manage_traders')
 def manage_traders():
@@ -136,21 +127,96 @@ def add_trader():
         db = get_db()
         db.execute('INSERT INTO traders (name, line, total_debt) VALUES (?, ?, ?)', (name, line, 0.0))
         db.commit()
+        flash(f"Trader '{name}' was added successfully.", 'success')
     return redirect(url_for('manage_traders'))
+
+@app.route('/edit_trader/<int:trader_id>', methods=['GET', 'POST'])
+def edit_trader(trader_id):
+    """Handles editing a trader's details."""
+    db = get_db()
+    if request.method == 'POST':
+        name = request.form['name']
+        line = request.form['line']
+        if name and line:
+            db.execute('UPDATE traders SET name = ?, line = ? WHERE id = ?', (name, line, trader_id))
+            db.commit()
+            flash(f"Trader '{name}' updated successfully!", 'success')
+            return redirect(url_for('manage_traders'))
+    
+    trader = db.execute('SELECT * FROM traders WHERE id = ?', (trader_id,)).fetchone()
+    if not trader:
+        flash("Trader not found.", 'error')
+        return redirect(url_for('manage_traders'))
+    return render_template('edit_trader.html', trader=trader, lines=lines)
 
 @app.route('/delete_trader/<int:trader_id>', methods=['POST'])
 def delete_trader(trader_id):
-    """Deletes a trader from the database."""
-    # In a real app, you might want to handle what happens to their transactions.
-    # For now, we just delete the trader.
+    """Deletes a trader and their transactions."""
     db = get_db()
-    db.execute('DELETE FROM traders WHERE id = ?', (trader_id,))
-    # We should also delete their transactions to keep the database clean
-    db.execute('DELETE FROM transactions WHERE trader_id = ?', (trader_id,))
-    db.commit()
+    trader = db.execute('SELECT name FROM traders WHERE id = ?', (trader_id,)).fetchone()
+    if trader:
+        db.execute('DELETE FROM traders WHERE id = ?', (trader_id,))
+        db.execute('DELETE FROM transactions WHERE trader_id = ?', (trader_id,))
+        db.commit()
+        flash(f"Trader '{trader['name']}' and all their transactions have been deleted.", 'success')
     return redirect(url_for('manage_traders'))
+
+@app.route('/manage_rates', methods=['GET', 'POST'])
+def manage_rates():
+    """Handles displaying and saving daily rates."""
+    db = get_db()
+    today_str = date.today().isoformat()
+    if request.method == 'POST':
+        for line in lines:
+            for bird in bird_types:
+                rate_value = request.form.get(f'rate-{line}-{bird}')
+                if rate_value:
+                    existing = db.execute('SELECT id FROM daily_rates WHERE date = ? AND line = ? AND bird_type = ?', (today_str, line, bird)).fetchone()
+                    if existing:
+                        db.execute('UPDATE daily_rates SET rate = ? WHERE id = ?', (float(rate_value), existing['id']))
+                    else:
+                        db.execute('INSERT INTO daily_rates (date, line, bird_type, rate) VALUES (?, ?, ?, ?)', (today_str, line, bird, float(rate_value)))
+        db.commit()
+        flash("Today's rates have been saved successfully!", 'success')
+        return redirect(url_for('manage_rates'))
+
+    rates_from_db = db.execute('SELECT line, bird_type, rate FROM daily_rates WHERE date = ?', (today_str,)).fetchall()
+    current_rates = {line: {} for line in lines}
+    for rate in rates_from_db: current_rates[rate['line']][rate['bird_type']] = rate['rate']
+    return render_template('manage_rates.html', lines=lines, bird_types=bird_types, current_rates=current_rates, today_str=today_str)
+
+# --- REPORTS ROUTE ---
+
+@app.route('/reports')
+def reports():
+    """Gathers data and displays the reporting dashboard."""
+    db = get_db()
+    
+    # Query 1: Sales Summary for the last 7 days
+    seven_days_ago = (date.today() - timedelta(days=7)).isoformat()
+    summary = db.execute(
+        """
+        SELECT SUM(total_amount) as total_revenue, COUNT(id) as num_transactions 
+        FROM transactions WHERE type = 'Purchase' AND date >= ?
+        """, (seven_days_ago,)
+    ).fetchone()
+
+    # Query 2: Top 5 traders by debt
+    top_debtors = db.execute(
+        "SELECT * FROM traders WHERE total_debt > 0 ORDER BY total_debt DESC LIMIT 5"
+    ).fetchall()
+
+    # Query 3: Sales performance by line (all time)
+    line_performance = db.execute(
+        """
+        SELECT t.line, SUM(tx.total_amount) as total_sales 
+        FROM transactions tx JOIN traders t ON tx.trader_id = t.id 
+        WHERE tx.type = 'Purchase' GROUP BY t.line ORDER BY total_sales DESC
+        """
+    ).fetchall()
+    
+    return render_template('reports.html', summary=summary, top_debtors=top_debtors, line_performance=line_performance)
 
 if __name__ == '__main__':
     app.run(debug=True)
-
 
