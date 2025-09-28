@@ -1,4 +1,4 @@
-# Import the Flask framework. This is the foundation of our web app.
+# Import the Flask framework and the render_template function.
 from flask import Flask, render_template
 
 # Initialize our Flask application.
@@ -49,13 +49,32 @@ transactions = [
 # This is the main homepage of our application.
 @app.route('/')
 def home():
-    """This function runs when someone visits the homepage."""
-    # For now, it just prints a message to the terminal.
-    # Later, it will load an HTML page.
-    print("Homepage accessed!")
-    return "Welcome to the Poultry Farm Manager. We are setting things up!"
+    """
+    This function runs when someone visits the homepage.
+    It now renders the home.html template and passes our 'lines' list to it.
+    Flask will look for 'home.html' inside the 'templates' folder.
+    """
+    return render_template('home.html', lines=lines)
+# Import the Flask framework and the render_template function.
+
+
+# This is our new dynamic route to show traders for a specific line.
+@app.route('/line/<line_name>')
+def view_line(line_name):
+    """
+    This function runs when a user visits a URL like /line/Pati.
+    It finds all traders from that line and displays them.
+    """
+    # We use a list comprehension to create a new list containing
+    # only the traders from the selected line.
+    traders_in_line = [trader for trader in traders if trader['line'] == line_name]
+    
+    # We then render the new 'line_traders.html' template.
+    # We pass the filtered list of traders and the line name itself to the template.
+    return render_template('line_traders.html', line_name=line_name, traders_in_line=traders_in_line)
 
 # This line allows us to run the app by running `python app.py` in the terminal.
 if __name__ == '__main__':
     # debug=True means the server will automatically restart when we save changes.
     app.run(debug=True)
+
