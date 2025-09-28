@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Account Statement - {{ trader.name }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { width: 210mm; margin: auto; padding: 20mm; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { margin: 0; }
+        .trader-info { margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top; }
+        th { background-color: #f2f2f2; }
+        .text-right { text-align: right; }
+        .summary { margin-top: 30px; float: right; width: 50%; }
+        .summary td { font-weight: bold; }
+        td.details { font-size: 14px; line-height: 1.4; }
+    </style>
+</head>
+<body onload="window.print();">
+    <div class="container">
+        <div class="header">
+            <h1>Amit Poultry Farm, Barwani </h1>
+            <p>Account Statement</p>
+        </div>
+        <div class="trader-info">
+            <h3>To: {{ trader.name }}</h3>
+            <p>Line: {{ trader.line }}</p>
+            <p>Statement Date: {{ today_date }}</p>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Details</th>
+                    <th>Driver</th>
+                    <th class="text-right">Debit (₹)</th>
+                    <th class="text-right">Credit (₹)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in transactions %}
+                <tr>
+                    <td>{{ tx.date }}</td>
+                    <td class="details">
+                        {% if tx.type == 'Purchase' %}
+                            {# This complex block reformats the purchase details string #}
+                            {% for line in tx.details.split('\n') %}
+                                {% set parts = line.replace(' units', '').replace(' kg', 'kg').replace(' @ ', ' - ').split(': ') %}
+                                {% set bird_short = parts[0].replace('Minar', 'M').replace('Broiler', 'B').replace('Parent', 'P') %}
+                                {{ bird_short }} - {{ parts[1] }}{{ '<br>' if not loop.last else ''|safe }}
+                            {% endfor %}
+                        {% else %}
+                            Payment Received
+                        {% endif %}
+                    </td>
+                    <td>{{ tx.driver_name or '' }}</td>
+                    <td class="text-right">
+                        {% if tx.type == 'Purchase' %}
+                            {{ "%.2f"|format(tx.total_amount) }}
+                        {% endif %}
+                    </td>
+                    <td class="text-right">
+                        {% if tx.amount_paid > 0 %}
+                            {{ "%.2f"|format(tx.amount_paid) }}
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <table class="summary">
+            <tr>
+                <td>Total Due Amount:</td>
+                <td class="text-right">₹ {{ "%.2f"|format(trader.total_debt) }}</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>
+
