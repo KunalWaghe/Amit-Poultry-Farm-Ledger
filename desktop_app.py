@@ -29,12 +29,10 @@ def close_db(error):
 # --- STATIC DATA ---
 lines = ["Pati", "Amjhera+Gandhwani", "Anjad", "Dahi", "Local"]
 bird_types = ["Minar", "Broiler", "Parent"]
-# New list of drivers
 drivers = ["Deepu", "Firoj", "Ritesh", "Akram", "Kanha", "Rahul", "Other"]
 
 
 # --- CORE ROUTES ---
-
 @app.route('/')
 def home():
     """Renders the homepage."""
@@ -61,29 +59,24 @@ def view_trader(trader_id):
     current_rates = {r['bird_type']: r['rate'] for r in rates_from_db}
     
     trader_transactions = db.execute('SELECT * FROM transactions WHERE trader_id = ? ORDER BY date DESC, id DESC', (trader_id,)).fetchall()
-    # Pass the list of drivers to the template
     return render_template('trader_ledger.html', trader=selected_trader, transactions=trader_transactions, rates=current_rates, drivers=drivers)
 
-# --- TRANSACTION ROUTES ---
 
+# --- TRANSACTION ROUTES ---
 @app.route('/trader/<int:trader_id>/add_bill', methods=['POST'])
 def add_bill(trader_id):
-    """Processes and saves a new bill for a trader, now including the driver's name."""
+    """Processes and saves a new bill for a trader."""
     db = get_db()
     today_str = date.today().isoformat()
     
     quantities = {'Minar': float(request.form.get('minar_qty') or 0), 'Broiler': float(request.form.get('broiler_qty') or 0), 'Parent': float(request.form.get('parent_qty') or 0)}
     rates_from_form = {'Minar': float(request.form.get('minar_rate') or 0), 'Broiler': float(request.form.get('broiler_rate') or 0), 'Parent': float(request.form.get('parent_rate') or 0)}
-    # Get the driver's name from the form
     driver_name = request.form.get('driver_name')
     
     total_bill, bill_details = 0, []
     for bird, qty in quantities.items():
         if qty > 0:
-            rate = rates_from_form.get(bird)
-            if not rate:
-                flash(f"Error: Rate for {bird} was not provided.", 'error')
-                return redirect(url_for('view_trader', trader_id=trader_id))
+            rate = rates_from_form.get(bird, 0)
             total_bill += qty * rate
             bill_details.append(f"{bird}: {qty} {'units' if bird == 'Minar' else 'kg'} @ {'%.2f' % rate}")
             
@@ -95,7 +88,6 @@ def add_bill(trader_id):
     remaining_due = total_bill - amount_paid
     
     db.execute('UPDATE traders SET total_debt = total_debt + ? WHERE id = ?', (remaining_due, trader_id))
-    # Insert the driver's name into the database with the transaction
     db.execute(
         'INSERT INTO transactions (trader_id, type, date, details, driver_name, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?, ?)',
         (trader_id, 'Purchase', today_str, "\n".join(bill_details), driver_name, total_bill, amount_paid)
@@ -121,10 +113,86 @@ def add_payment(trader_id):
         
     return redirect(url_for('view_trader', trader_id=trader_id))
 
+# --- BILL EDIT/DELETE ROUTES ---
+
+@app.route('/bill/<int:transaction_id>/edit', methods=['GET', 'POST'])
+def edit_bill(transaction_id):
+    """Displays a form to edit a bill and processes the update."""
+    db = get_db()
+    bill = db.execute('SELECT * FROM transactions WHERE id = ? AND type = "Purchase"', (transaction_id,)).fetchone()
+    if not bill:
+        flash("Bill not found.", "error")
+        return redirect(url_for('home'))
+
+    trader = db.execute('SELECT * FROM traders WHERE id = ?', (bill['trader_id'],)).fetchone()
+
+    if request.method == 'POST':
+        # 1. Reverse the old transaction from the total debt
+        old_remaining_due = bill['total_amount'] - bill['amount_paid']
+        db.execute('UPDATE traders SET total_debt = total_debt - ? WHERE id = ?', (old_remaining_due, bill['trader_id']))
+        
+        # 2. Calculate the new transaction details from the form
+        quantities = {'Minar': float(request.form.get('minar_qty') or 0), 'Broiler': float(request.form.get('broiler_qty') or 0), 'Parent': float(request.form.get('parent_qty') or 0)}
+        rates_from_form = {'Minar': float(request.form.get('minar_rate') or 0), 'Broiler': float(request.form.get('broiler_rate') or 0), 'Parent': float(request.form.get('parent_rate') or 0)}
+        new_driver = request.form.get('driver_name')
+        new_amount_paid = float(request.form.get('amount_paid') or 0)
+
+        new_total_bill, new_details = 0, []
+        for bird, qty in quantities.items():
+            if qty > 0:
+                rate = rates_from_form.get(bird, 0)
+                new_total_bill += qty * rate
+                new_details.append(f"{bird}: {qty} {'units' if bird == 'Minar' else 'kg'} @ {'%.2f' % rate}")
+        
+        # 3. Apply the new transaction to the total debt
+        new_remaining_due = new_total_bill - new_amount_paid
+        db.execute('UPDATE traders SET total_debt = total_debt + ? WHERE id = ?', (new_remaining_due, bill['trader_id']))
+        
+        # 4. Update the transaction in the database
+        db.execute(
+            'UPDATE transactions SET details = ?, driver_name = ?, total_amount = ?, amount_paid = ? WHERE id = ?',
+            ("\n".join(new_details), new_driver, new_total_bill, new_amount_paid, transaction_id)
+        )
+        db.commit()
+        flash(f"Bill #{transaction_id} was updated successfully!", "success")
+        return redirect(url_for('view_trader', trader_id=bill['trader_id']))
+
+    # For GET request, pre-populate the form by parsing the details string
+    bill_items = {}
+    if bill['details']:
+        for line in bill['details'].split('\n'):
+            match = re.search(r"(\w+): (\d+\.?\d*) .* @ (\d+\.?\d*)", line)
+            if match:
+                bird, qty, rate = match.groups()
+                bill_items[bird] = {'qty': qty, 'rate': rate}
+
+    return render_template('edit_bill.html', bill=bill, trader=trader, bill_items=bill_items, drivers=drivers)
+
+
+@app.route('/bill/<int:transaction_id>/delete', methods=['POST'])
+def delete_bill(transaction_id):
+    """Deletes a bill and reverses its financial impact."""
+    db = get_db()
+    bill = db.execute('SELECT * FROM transactions WHERE id = ? AND type = "Purchase"', (transaction_id,)).fetchone()
+    
+    if bill:
+        # Reverse the financial impact of the bill
+        remaining_due = bill['total_amount'] - bill['amount_paid']
+        db.execute('UPDATE traders SET total_debt = total_debt - ? WHERE id = ?', (remaining_due, bill['trader_id']))
+        
+        # Delete the transaction record
+        db.execute('DELETE FROM transactions WHERE id = ?', (transaction_id,))
+        db.commit()
+        flash(f"Bill #{transaction_id} has been deleted successfully.", "success")
+        return redirect(url_for('view_trader', trader_id=bill['trader_id']))
+    else:
+        flash("Bill not found or could not be deleted.", "error")
+        return redirect(url_for('home'))
+
+
 # --- MANAGEMENT ROUTES ---
 @app.route('/manage_traders')
 def manage_traders():
-    """Displays the trader management page."""
     db = get_db()
     all_traders = db.execute('SELECT * FROM traders ORDER BY line, name').fetchall()
     return render_template('manage_traders.html', traders=all_traders, lines=lines)
@@ -133,11 +201,26 @@ def manage_traders():
 def add_trader():
     name = request.form['name']
     line = request.form['line']
+    # Get the opening balance from the form. Default to 0 if empty.
+    opening_balance = float(request.form.get('opening_balance') or 0)
+
     if name and line:
         db = get_db()
-        db.execute('INSERT INTO traders (name, line, total_debt) VALUES (?, ?, ?)', (name, line, 0.0))
+        # Insert the new trader with the specified opening balance
+        cursor = db.execute('INSERT INTO traders (name, line, total_debt) VALUES (?, ?, ?)', (name, line, opening_balance))
+        
+        # If there was an opening balance, create an initial transaction for it.
+        # This ensures the ledger is accurate from the start.
+        if opening_balance > 0:
+            new_trader_id = cursor.lastrowid
+            today_str = date.today().isoformat()
+            db.execute(
+                'INSERT INTO transactions (trader_id, type, date, details, total_amount, amount_paid) VALUES (?, ?, ?, ?, ?, ?)',
+                (new_trader_id, 'Purchase', today_str, 'Opening Balance', opening_balance, 0)
+            )
+            
         db.commit()
-        flash(f"Trader '{name}' was added successfully.", 'success')
+        flash(f"Trader '{name}' was added successfully with an opening balance of ₹{opening_balance:.2f}.", 'success')
     return redirect(url_for('manage_traders'))
 
 @app.route('/edit_trader/<int:trader_id>', methods=['GET', 'POST'])
@@ -151,7 +234,6 @@ def edit_trader(trader_id):
             db.commit()
             flash(f"Trader '{name}' updated successfully!", 'success')
             return redirect(url_for('manage_traders'))
-    
     trader = db.execute('SELECT * FROM traders WHERE id = ?', (trader_id,)).fetchone()
     if not trader:
         flash("Trader not found.", 'error')
@@ -186,13 +268,12 @@ def manage_rates():
         db.commit()
         flash("Today's rates have been saved successfully!", 'success')
         return redirect(url_for('manage_rates'))
-
     rates_from_db = db.execute('SELECT line, bird_type, rate FROM daily_rates WHERE date = ?', (today_str,)).fetchall()
     current_rates = {line: {} for line in lines}
     for rate in rates_from_db: current_rates[rate['line']][rate['bird_type']] = rate['rate']
     return render_template('manage_rates.html', lines=lines, bird_types=bird_types, current_rates=current_rates, today_str=today_str)
 
-# --- REPORTS ROUTE ---
+# --- REPORTS & PRINTING ROUTES ---
 @app.route('/reports')
 def reports():
     db = get_db()
@@ -202,31 +283,26 @@ def reports():
     line_performance = db.execute("SELECT t.line, SUM(tx.total_amount) as total_sales FROM transactions tx JOIN traders t ON tx.trader_id = t.id WHERE tx.type = 'Purchase' GROUP BY t.line ORDER BY total_sales DESC").fetchall()
     return render_template('reports.html', summary=summary, top_debtors=top_debtors, line_performance=line_performance)
 
-# --- PRINTING ROUTES ---
-
 @app.route('/bill/<int:transaction_id>/print')
 def print_bill(transaction_id):
-    """Generates a printable page for a single bill."""
     db = get_db()
     bill = db.execute('SELECT * FROM transactions WHERE id = ? AND type = "Purchase"', (transaction_id,)).fetchone()
     if not bill:
         flash("Bill not found.", 'error')
         return redirect(url_for('home'))
-    
     trader = db.execute('SELECT * FROM traders WHERE id = ?', (bill['trader_id'],)).fetchone()
     return render_template('print_bill.html', bill=bill, trader=trader)
 
 @app.route('/trader/<int:trader_id>/statement')
 def print_statement(trader_id):
-    """Generates a printable full account statement for a trader."""
     db = get_db()
     trader = db.execute('SELECT * FROM traders WHERE id = ?', (trader_id,)).fetchone()
     if not trader:
         flash("Trader not found.", 'error')
         return redirect(url_for('home'))
-        
     transactions = db.execute('SELECT * FROM transactions WHERE trader_id = ? ORDER BY date, id', (trader_id,)).fetchall()
     return render_template('print_statement.html', trader=trader, transactions=transactions, today_date=date.today().strftime('%d-%b-%Y'))
+
 
 # And REPLACE it with this new section:
 def run_flask_app():

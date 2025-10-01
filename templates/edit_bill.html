@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mx-auto p-4 sm:p-6 lg:p-8">
+    <a href="{{ url_for('view_trader', trader_id=trader.id) }}" class="text-blue-600 hover:text-blue-800 transition duration-300">&larr; Back to {{ trader.name }}'s Ledger</a>
+    <h1 class="text-3xl font-bold text-gray-800 mt-4 mb-6">Edit Bill #{{ bill.id }}</h1>
+
+    <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200 max-w-2xl mx-auto">
+        <form id="edit-billing-form" action="{{ url_for('edit_bill', transaction_id=bill.id) }}" method="POST">
+            <p class="mb-4"><strong>Date:</strong> {{ bill.date }}</p>
+            <table class="w-full mb-4">
+                <thead>
+                    <tr class="text-left text-gray-600">
+                        <th class="py-2">Bird Type</th>
+                        <th class="py-2">Quantity/Weight (kg)</th>
+                        <th class="py-2">Rate (₹)</th>
+                        <th class="py-2 text-right">Subtotal (₹)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bird in ['Minar', 'Broiler', 'Parent'] %}
+                    <tr class="border-b">
+                        <td class="py-3 font-semibold">{{ bird }}</td>
+                        <td><input type="number" step="0.01" name="{{ bird.lower() }}_qty" value="{{ bill_items.get(bird, {}).get('qty', '0') }}" class="qty-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"></td>
+                        <td><input type="number" step="0.01" name="{{ bird.lower() }}_rate" value="{{ bill_items.get(bird, {}).get('rate', '0.0') }}" class="rate-input mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"></td>
+                        <td class="subtotal text-right font-medium text-gray-700">0.00</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <div class="mb-4">
+                <label for="driver_name" class="block text-sm font-medium text-gray-700">Driver Name</label>
+                <select id="driver_name" name="driver_name" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                    {% for driver in drivers %}
+                    <option value="{{ driver }}" {% if driver == bill.driver_name %}selected{% endif %}>{{ driver }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <hr class="my-4">
+            
+            <div class="space-y-3">
+                <div class="flex justify-between items-center text-lg">
+                    <span class="font-semibold text-gray-700">TOTAL BILL:</span>
+                    <span id="total-bill" class="font-bold text-gray-900">₹ 0.00</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <label for="amount_paid_bill" class="font-semibold text-gray-700">AMOUNT PAID:</label>
+                    <input type="number" step="0.01" id="amount_paid_bill" name="amount_paid" value="{{ bill.amount_paid }}" class="payment-input mt-1 block w-1/3 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 text-right">
+                </div>
+                <div class="flex justify-between items-center text-xl font-bold text-red-600">
+                    <span>REMAINING DUE:</span>
+                    <span id="remaining-due">₹ 0.00</span>
+                </div>
+            </div>
+
+            <button type="submit" class="mt-6 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300 shadow-md">
+                Save Changes
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('edit-billing-form');
+    const qtyInputs = form.querySelectorAll('.qty-input');
+    const rateInputs = form.querySelectorAll('.rate-input');
+    const paymentInput = form.querySelector('.payment-input');
+    const totalBillEl = document.getElementById('total-bill');
+    const remainingDueEl = document.getElementById('remaining-due');
+
+    function calculateTotal() {
+        let total = 0;
+        const rows = form.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+            const rate = parseFloat(row.querySelector('.rate-input').value) || 0;
+            const subtotal = qty * rate;
+            row.querySelector('.subtotal').textContent = subtotal.toFixed(2);
+            total += subtotal;
+        });
+        
+        const amountPaid = parseFloat(paymentInput.value) || 0;
+        const remaining = total - amountPaid;
+
+        totalBillEl.textContent = '₹ ' + total.toFixed(2);
+        remainingDueEl.textContent = '₹ ' + remaining.toFixed(2);
+    }
+    
+    // Initial calculation on page load
+    calculateTotal();
+
+    qtyInputs.forEach(input => input.addEventListener('input', calculateTotal));
+    rateInputs.forEach(input => input.addEventListener('input', calculateTotal));
+    paymentInput.addEventListener('input', calculateTotal);
+});
+</script>
+{% endblock %}
